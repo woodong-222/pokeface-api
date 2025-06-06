@@ -3,7 +3,6 @@ require_once __DIR__ . '/../config/header.php';
 require_once __DIR__ . '/../vendor/autoload.php';
 
 use Firebase\JWT\JWT;
-use Firebase\JWT\Key;
 
 header('Content-Type: application/json');
 
