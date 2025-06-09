@@ -46,13 +46,39 @@ if ($stmt->fetchColumn() > 0) {
 // 비밀번호 해시
 $hashed_pw = password_hash($user_pw, PASSWORD_BCRYPT);
 
-// DB 저장
-$stmt = $pdo->prepare("INSERT INTO users (user_id, user_pw, user_name) VALUES (?, ?, ?)");
-$result = $stmt->execute([$user_id, $hashed_pw, $user_name]);
-
-if ($result) {
-    echo json_encode(['message' => '회원가입에 성공했습니다.']);
-} else {
+try {
+    // 트랜잭션 시작
+    $pdo->beginTransaction();
+    
+    // DB 저장
+    $stmt = $pdo->prepare("INSERT INTO users (user_id, user_pw, user_name) VALUES (?, ?, ?)");
+    $result = $stmt->execute([$user_id, $hashed_pw, $user_name]);
+    
+    if ($result) {
+        $newUserId = $pdo->lastInsertId();
+        
+        // 랜덤 프로필 포켓몬 설정 (1-149번)
+        $randomPokemonId = rand(1, 149);
+        $profileStmt = $pdo->prepare("UPDATE users SET profile_pokemon_id = ? WHERE id = ?");
+        $profileStmt->execute([$randomPokemonId, $newUserId]);
+        
+        // 사용자 통계 테이블 초기화
+        $statsStmt = $pdo->prepare("INSERT INTO user_stats (user_id) VALUES (?)");
+        $statsStmt->execute([$newUserId]);
+        
+        // 트랜잭션 커밋
+        $pdo->commit();
+        
+        echo json_encode(['message' => '회원가입에 성공했습니다.']);
+    } else {
+        // 트랜잭션 롤백
+        $pdo->rollback();
+        http_response_code(500);
+        echo json_encode(['detail' => '회원가입 중 오류가 발생했습니다.']);
+    }
+} catch (Exception $e) {
+    // 트랜잭션 롤백
+    $pdo->rollback();
     http_response_code(500);
     echo json_encode(['detail' => '회원가입 중 오류가 발생했습니다.']);
 }

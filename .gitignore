@@ -210,3 +210,9 @@ $RECYCLE.BIN/
 # End of https://www.toptal.com/developers/gitignore/api/macos,windows,visualstudiocode,phpstorm,git
 
 .env
+
+uploads/captures/*
+uploads/community/*
+
+pokeface_env/
+pokeface_env/bin/
