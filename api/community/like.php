@@ -11,7 +11,6 @@ try {
         exit;
     }
 
-    // POST 데이터 받기
     $input = json_decode(file_get_contents('php://input'), true);
     
     if (!$input || !isset($input['postId'])) {
@@ -22,7 +21,6 @@ try {
 
     $postId = (int)$input['postId'];
 
-    // 게시글 존재 확인
     $checkStmt = $pdo->prepare('SELECT id FROM community_posts WHERE id = ? AND is_deleted = 0');
     $checkStmt->execute([$postId]);
     
@@ -32,17 +30,14 @@ try {
         exit;
     }
 
-    // 현재 좋아요 상태 확인
     $likeStmt = $pdo->prepare('SELECT id FROM post_likes WHERE post_id = ? AND user_id = ?');
     $likeStmt->execute([$postId, $userId]);
     $likeExists = $likeStmt->fetch();
 
-    // 트랜잭션 시작
     $pdo->beginTransaction();
 
     try {
         if ($likeExists) {
-            // 좋아요 취소
             $deleteLikeStmt = $pdo->prepare('DELETE FROM post_likes WHERE post_id = ? AND user_id = ?');
             $deleteLikeStmt->execute([$postId, $userId]);
 
@@ -51,7 +46,6 @@ try {
 
             $isLiked = false;
         } else {
-            // 좋아요 추가
             $insertLikeStmt = $pdo->prepare('INSERT INTO post_likes (post_id, user_id, created_at) VALUES (?, ?, NOW())');
             $insertLikeStmt->execute([$postId, $userId]);
 
@@ -61,10 +55,8 @@ try {
             $isLiked = true;
         }
 
-        // 트랜잭션 커밋
         $pdo->commit();
 
-        // 업데이트된 좋아요 수 조회
         $countStmt = $pdo->prepare('SELECT like_count FROM community_posts WHERE id = ?');
         $countStmt->execute([$postId]);
         $likeCount = $countStmt->fetchColumn();
@@ -77,7 +69,6 @@ try {
         ]);
 
     } catch (Exception $e) {
-        // 트랜잭션 롤백
         $pdo->rollback();
         throw $e;
     }

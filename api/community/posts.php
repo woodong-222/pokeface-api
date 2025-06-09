@@ -16,7 +16,6 @@ try {
         $limit = 100;
     }
 
-    // auth_middleware.php에서 $currentUser가 설정됨
     $userId = $currentUser['id'];
 
     $sql = '

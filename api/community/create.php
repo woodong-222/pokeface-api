@@ -15,15 +15,12 @@ try {
     $content = '';
     $image = null;
 
-    // Content-Type 확인
     $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
     
     if (strpos($contentType, 'multipart/form-data') !== false) {
-        // 폼 데이터 처리
         $title = trim($_POST['title'] ?? '');
         $content = trim($_POST['content'] ?? '');
         
-        // 이미지 업로드 처리
         if (isset($_FILES['image']) && $_FILES['image']['error'] === UPLOAD_ERR_OK) {
             try {
                 $image = saveUploadedImage($_FILES['image'], $userId);
@@ -33,7 +30,6 @@ try {
                 exit;
             }
         } elseif (isset($_FILES['image']) && $_FILES['image']['error'] !== UPLOAD_ERR_NO_FILE) {
-            // 업로드 에러 코드에 따른 메시지
             $uploadErrors = [
                 UPLOAD_ERR_INI_SIZE => '파일 크기가 서버 설정을 초과했습니다',
                 UPLOAD_ERR_FORM_SIZE => '파일 크기가 폼 설정을 초과했습니다',
@@ -49,7 +45,6 @@ try {
             exit;
         }
     } else {
-        // JSON 데이터 처리
         $input = json_decode(file_get_contents('php://input'), true);
         
         if (!$input) {
@@ -63,7 +58,6 @@ try {
         $image = $input['image'] ?? null;
     }
 
-    // 유효성 검사
     if (empty($title)) {
         http_response_code(400);
         echo json_encode(['message' => '제목을 입력해주세요']);
@@ -88,7 +82,6 @@ try {
         exit;
     }
 
-    // 게시글 저장
     $stmt = $pdo->prepare('
         INSERT INTO community_posts (user_id, title, content, image, created_at) 
         VALUES (?, ?, ?, ?, NOW())
@@ -104,7 +97,6 @@ try {
 
     $postId = $pdo->lastInsertId();
 
-    // 작성된 게시글 정보 조회
     $postStmt = $pdo->prepare('
         SELECT 
             p.id,
@@ -146,16 +138,11 @@ try {
     ]);
 }
 
-/**
- * 업로드된 이미지 저장 함수
- */
 function saveUploadedImage($file, $userId) {
-    // 파일 크기 확인 (5MB)
     if ($file['size'] > 5 * 1024 * 1024) {
         throw new Exception('이미지 크기는 5MB 이하만 업로드 가능합니다');
     }
 
-    // 파일 타입 확인
     $allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
     $finfo = finfo_open(FILEINFO_MIME_TYPE);
     $mimeType = finfo_file($finfo, $file['tmp_name']);
@@ -165,30 +152,23 @@ function saveUploadedImage($file, $userId) {
         throw new Exception('JPG, PNG, GIF, WEBP 형식만 지원합니다');
     }
 
-    // 파일명 생성
     $extension = pathinfo($file['name'], PATHINFO_EXTENSION);
     $filename = 'community_' . $userId . '_' . time() . '_' . uniqid() . '.' . $extension;
 
-    // 업로드 디렉토리 경로 수정 (올바른 상대 경로)
     $uploadDir = __DIR__ . '/../../uploads/community/';
     
-    // 디렉토리가 없으면 생성
     if (!is_dir($uploadDir)) {
         if (!mkdir($uploadDir, 0777, true)) {
             throw new Exception('업로드 디렉토리 생성에 실패했습니다: ' . $uploadDir);
         }
-        // 디렉토리 생성 후 권한 재설정
         chmod($uploadDir, 0777);
     }
 
-    // 디렉토리 쓰기 권한 확인 및 수정
     if (!is_writable($uploadDir)) {
-        // 권한 변경 시도
         if (!chmod($uploadDir, 0777)) {
             throw new Exception('업로드 디렉토리에 쓰기 권한이 없습니다: ' . $uploadDir . ' (권한 변경 실패)');
         }
         
-        // 다시 확인
         if (!is_writable($uploadDir)) {
             throw new Exception('업로드 디렉토리에 쓰기 권한이 없습니다: ' . $uploadDir . ' (권한 변경 후에도 실패)');
         }
@@ -196,12 +176,10 @@ function saveUploadedImage($file, $userId) {
 
     $uploadPath = $uploadDir . $filename;
 
-    // 임시 파일 확인
     if (!is_uploaded_file($file['tmp_name'])) {
         throw new Exception('업로드된 파일이 유효하지 않습니다');
     }
 
-    // 파일 이동
     if (!move_uploaded_file($file['tmp_name'], $uploadPath)) {
         $error = error_get_last();
         throw new Exception('파일 이동에 실패했습니다. Error: ' . ($error['message'] ?? 'Unknown error') . ' Path: ' . $uploadPath);

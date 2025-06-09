@@ -16,17 +16,14 @@ if (!file_exists($imagePath)) {
     exit(1);
 }
 
-// 프로젝트 루트에서 가상환경 Python 경로
 $projectRoot = __DIR__ . '/..';
 $pythonPath = $projectRoot . '/pokeface_env/bin/python3';
 
-// 가상환경 Python이 없으면 시스템 Python 사용
 if (!file_exists($pythonPath)) {
     $pythonPath = 'python3';
     echo "가상환경을 찾을 수 없어 시스템 Python을 사용합니다.\n";
 }
 
-// Python 스크립트 실행하여 얼굴 벡터 추출
 $scriptPath = __DIR__ . '/face_embedding.py';
 $cmd = escapeshellcmd("$pythonPath $scriptPath " . escapeshellarg($imagePath));
 $output = shell_exec($cmd);
@@ -39,19 +36,15 @@ if (!isset($result['embedding'])) {
 
 $embedding = $result['embedding'];
 
-// 환경변수 파일에 저장 (.env 파일 업데이트)
 $envFile = __DIR__ . '/../.env';
 $envContent = file_get_contents($envFile);
 
-// 기존 DEVELOPER_FACE_EMBEDDING 제거
 $envContent = preg_replace('/^DEVELOPER_FACE_EMBEDDING=.*$/m', '', $envContent);
 $envContent = trim($envContent);
 
-// 새로운 임베딩 추가
 $embeddingJson = json_encode($embedding);
 $envContent .= "\nDEVELOPER_FACE_EMBEDDING=" . $embeddingJson . "\n";
 
-// 파일에 쓰기
 if (file_put_contents($envFile, $envContent)) {
     echo "✅ 개발자 얼굴이 성공적으로 등록되었습니다!\n";
     echo "이제 해당 얼굴 사진을 업로드하면 뮤츠를 획득할 수 있습니다.\n";

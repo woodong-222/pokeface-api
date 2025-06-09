@@ -2,7 +2,6 @@
 require_once __DIR__ . '/../../config/header.php';
 require_once __DIR__ . '/../../config/auth_middleware.php';
 
-// GET 메소드만 허용
 if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
     http_response_code(405);
     echo json_encode(['message' => 'Method not allowed']);
@@ -10,24 +9,19 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
 }
 
 try {
-    // 페이지네이션 파라미터
     $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
     $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 20;
     $offset = ($page - 1) * $limit;
 
-    // 정렬 파라미터 (기본: 최신순)
     $orderBy = isset($_GET['order']) ? $_GET['order'] : 'desc';
     $orderBy = in_array($orderBy, ['asc', 'desc']) ? $orderBy : 'desc';
 
-    // 사용자 ID 가져오기 (auth_middleware에서 설정된 $currentUser 사용)
     $userId = $currentUser['id'];
 
-    // 전체 포획 기록 수 조회
     $countStmt = $pdo->prepare('SELECT COUNT(*) FROM captures WHERE user_id = :user_id');
     $countStmt->execute(['user_id' => $userId]);
     $totalCount = $countStmt->fetchColumn();
 
-    // 포획 기록 조회 - 실제 테이블 컬럼명 사용
     $stmt = $pdo->prepare('
         SELECT 
             id,
@@ -41,31 +35,27 @@ try {
         LIMIT ' . (int)$limit . ' OFFSET ' . (int)$offset
     );
     
-    // user_id 바인딩
     $stmt->execute(['user_id' => $userId]);
     
     $captures = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    // 결과 데이터 포맷팅
     $formattedCaptures = array_map(function($capture) {
         return [
             'id' => (int)$capture['id'],
             'pokemonNumber' => (int)$capture['pokemon_id'],
             'pokemonName' => getPokemonName($capture['pokemon_id']),
-            'originalImage' => '../uploads/captures/' . $capture['image_path'], // 프론트엔드가 사용하는 필드
+            'originalImage' => '../uploads/captures/' . $capture['image_path'],
             'originalFilename' => $capture['original_filename'],
-            'imageUrl' => '../uploads/captures/' . $capture['image_path'], // 호환성을 위해 유지
+            'imageUrl' => '../uploads/captures/' . $capture['image_path'],
             'captureDate' => $capture['captured_at'],
             'captureDateFormatted' => formatKoreanTime($capture['captured_at'])
         ];
     }, $captures);
 
-    // 페이지네이션 정보
     $totalPages = ceil($totalCount / $limit);
     $hasNextPage = $page < $totalPages;
     $hasPrevPage = $page > 1;
 
-    // 응답
     echo json_encode([
         'message' => 'Success',
         'data' => $formattedCaptures,
@@ -87,7 +77,6 @@ try {
     ]);
 }
 
-// 포켓몬 이름 반환 함수
 function getPokemonName($pokemonId) {
     $koreanNames = [
         1 => '이상해씨', 2 => '이상해풀', 3 => '이상해꽃',
@@ -171,14 +160,13 @@ function getPokemonName($pokemonId) {
     return $koreanNames[$pokemonId] ?? "포켓몬 #{$pokemonId}";
 }
 
-// 한국 시간으로 포맷팅하는 함수
 function formatKoreanTime($datetime) {
     try {
         $date = new DateTime($datetime);
         $date->setTimezone(new DateTimeZone('Asia/Seoul'));
         return $date->format('Y-m-d H:i:s');
     } catch (Exception $e) {
-        return $datetime; // 포맷팅 실패 시 원본 반환
+        return $datetime;
     }
 }
 ?>

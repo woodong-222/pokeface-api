@@ -39,7 +39,7 @@ $payload = [
     'user_id' => $user['user_id'],
     'user_name' => $user['user_name'],
     'iat' => time(),
-    'exp' => time() + 3600  // 1시간 유효
+    'exp' => time() + 3600
 ];
 
 $jwt = JWT::encode($payload, JWT_SECRET, 'HS256');
