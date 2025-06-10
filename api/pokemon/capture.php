@@ -70,12 +70,7 @@ if (!move_uploaded_file($uploadedFile['tmp_name'], $tempFilePath)) {
 }
 
 try {
-    $projectRoot = __DIR__ . '/../..';
-    $pythonPath = $projectRoot . '/pokeface_env/bin/python3';
-    
-    if (!file_exists($pythonPath)) {
-        $pythonPath = 'python3';
-    }
+    $pythonPath = 'python3';
     
     $scriptPath = __DIR__ . '/../../scripts/face_embedding.py';
     

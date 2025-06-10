@@ -10,27 +10,22 @@ import os
 from pathlib import Path
 import traceback
 
-# DeepFace 홈 디렉토리를 프로젝트 내부로 설정
 project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 deepface_home = os.path.join(project_dir, '.deepface')
 os.environ['DEEPFACE_HOME'] = deepface_home
 
-# .deepface 디렉토리 생성 (권한 문제 해결)
 try:
     os.makedirs(deepface_home, exist_ok=True)
-    # 권한 확인을 위한 테스트 파일 생성
     test_file = os.path.join(deepface_home, 'test_write.tmp')
     with open(test_file, 'w') as f:
         f.write('test')
     os.remove(test_file)
 except PermissionError:
-    # 권한 문제가 있으면 임시 디렉토리 사용
     import tempfile
     deepface_home = os.path.join(tempfile.gettempdir(), 'deepface')
     os.environ['DEEPFACE_HOME'] = deepface_home
     os.makedirs(deepface_home, exist_ok=True)
 
-# TensorFlow 로그 억제
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import warnings
 warnings.filterwarnings('ignore')
@@ -86,7 +81,6 @@ def extract_face_embedding(img_path):
         return {"embedding": embedding}
 
     except ValueError as e:
-        # 얼굴 감지 실패
         error_msg = str(e)
         if "Face could not be detected" in error_msg:
             return {"error": "얼굴을 감지할 수 없습니다. 명확한 얼굴이 포함된 이미지를 사용해주세요."}
@@ -99,7 +93,6 @@ def extract_face_embedding(img_path):
         return {"error": f"필요한 라이브러리를 찾을 수 없습니다: {str(e)}"}
 
     except Exception as e:
-        # 더 자세한 에러 정보 제공
         error_msg = str(e)
         tb = traceback.format_exc()
         return {"error": f"알 수 없는 오류: {error_msg}", "traceback": tb}
@@ -113,20 +106,16 @@ def main():
 
         img_path = sys.argv[1]
         
-        # 경로 정규화
         img_path = os.path.abspath(img_path)
         
         result = extract_face_embedding(img_path)
 
-        # 결과를 JSON으로 출력 (한글 지원)
         print(json.dumps(result, ensure_ascii=False))
 
-        # 에러가 있으면 exit code 1
         if "error" in result:
             sys.exit(1)
             
     except Exception as e:
-        # 예상치 못한 에러 처리
         error_result = {
             "error": f"스크립트 실행 중 오류: {str(e)}",
             "traceback": traceback.format_exc()

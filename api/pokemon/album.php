@@ -44,9 +44,10 @@ try {
             'id' => (int)$capture['id'],
             'pokemonNumber' => (int)$capture['pokemon_id'],
             'pokemonName' => getPokemonName($capture['pokemon_id']),
-            'originalImage' => '../uploads/captures/' . $capture['image_path'],
+            // 이 부분을 수정
+            'originalImage' => '/uploads/captures/' . $capture['image_path'], // '../' 제거
             'originalFilename' => $capture['original_filename'],
-            'imageUrl' => '../uploads/captures/' . $capture['image_path'],
+            'imageUrl' => '/uploads/captures/' . $capture['image_path'], // '../' 제거
             'captureDate' => $capture['captured_at'],
             'captureDateFormatted' => formatKoreanTime($capture['captured_at'])
         ];

@@ -23,7 +23,7 @@ try {
         
         if (isset($_FILES['image']) && $_FILES['image']['error'] === UPLOAD_ERR_OK) {
             try {
-                $image = saveUploadedImage($_FILES['image'], $userId);
+                $image = saveUploadedImage($_FILES['image'], $currentUser['id']);
             } catch (Exception $e) {
                 http_response_code(400);
                 echo json_encode(['message' => $e->getMessage()]);
@@ -82,12 +82,16 @@ try {
         exit;
     }
 
+    // 한국시간으로 저장 - PHP에서 계산
+    date_default_timezone_set('Asia/Seoul');
+    $koreaTime = date('Y-m-d H:i:s');
+    
     $stmt = $pdo->prepare('
         INSERT INTO community_posts (user_id, title, content, image, created_at) 
-        VALUES (?, ?, ?, ?, NOW())
+        VALUES (?, ?, ?, ?, ?)
     ');
     
-    $result = $stmt->execute([$userId, $title, $content, $image]);
+    $result = $stmt->execute([$currentUser['id'], $title, $content, $image, $koreaTime]);
     
     if (!$result) {
         http_response_code(500);
@@ -126,7 +130,8 @@ try {
             'createdAt' => $post['created_at'],
             'likeCount' => 0,
             'isLiked' => false,
-            'image' => $post['image'] ? '../uploads/community/' . $post['image'] : null
+            'isAuthor' => true,
+            'image' => $post['image'] ? '/uploads/community/' . $post['image'] : null
         ]
     ], JSON_UNESCAPED_UNICODE);
 
@@ -187,3 +192,4 @@ function saveUploadedImage($file, $userId) {
 
     return $filename;
 }
+?>

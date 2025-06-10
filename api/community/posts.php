@@ -3,6 +3,8 @@ require_once __DIR__ . '/../../config/header.php';
 require_once __DIR__ . '/../../config/auth_middleware.php';
 
 try {
+    $pdo->exec("SET time_zone = '+09:00'");
+    
     if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
         http_response_code(405);
         echo json_encode(['message' => 'Method not allowed']);
