@@ -3,24 +3,7 @@ require_once __DIR__ . '/../../config/header.php';
 require_once __DIR__ . '/../../config/auth_middleware.php';
 
 try {
-    $stmt = $pdo->prepare('
-        SELECT 
-            id,
-            user_id,
-            user_name,
-            created_at,
-            profile_pokemon_id
-        FROM users 
-        WHERE id = ?
-    ');
-    $stmt->execute([$userId]);
-    $user = $stmt->fetch(PDO::FETCH_ASSOC);
-
-    if (!$user) {
-        http_response_code(404);
-        echo json_encode(['message' => 'User not found']);
-        exit;
-    }
+    $user = $currentUser;
 
     $statsStmt = $pdo->prepare('
         SELECT 
@@ -35,15 +18,15 @@ try {
     $stats = $statsStmt->fetch(PDO::FETCH_ASSOC);
 
     if (!$stats) {
-        $totalStmt = $pdo->prepare('SELECT COUNT(*) FROM captures WHERE user_id = ?');
+        $totalStmt = $pdo->prepare('SELECT COUNT(*) FROM captures_history WHERE user_id = ?');
         $totalStmt->execute([$userId]);
         $totalCaptures = $totalStmt->fetchColumn();
 
-        $uniqueStmt = $pdo->prepare('SELECT COUNT(DISTINCT pokemon_id) FROM captures WHERE user_id = ?');
+        $uniqueStmt = $pdo->prepare('SELECT COUNT(DISTINCT pokemon_id) FROM captures_history WHERE user_id = ?');
         $uniqueStmt->execute([$userId]);
         $uniquePokemon = $uniqueStmt->fetchColumn();
 
-        $lastStmt = $pdo->prepare('SELECT MAX(captured_at) FROM captures WHERE user_id = ?');
+        $lastStmt = $pdo->prepare('SELECT MAX(captured_at) FROM captures_history WHERE user_id = ?');
         $lastStmt->execute([$userId]);
         $lastCaptureDate = $lastStmt->fetchColumn();
 
@@ -64,7 +47,7 @@ try {
         SELECT 
             pokemon_id,
             COUNT(*) as count
-        FROM captures 
+        FROM captures_history 
         WHERE user_id = ?
         GROUP BY pokemon_id
         ORDER BY count DESC, pokemon_id ASC
@@ -75,7 +58,7 @@ try {
 
     $recentStmt = $pdo->prepare('
         SELECT COUNT(*) 
-        FROM captures 
+        FROM captures_history
         WHERE user_id = ? AND captured_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
     ');
     $recentStmt->execute([$userId]);
@@ -84,10 +67,10 @@ try {
     echo json_encode([
         'message' => 'Success',
         'user' => [
-            'id' => $user['user_id'],
+            'id' => (int)$user['id'],
             'username' => $user['user_name'],
             'user_id' => $user['user_id'],
-            'joinDate' => $user['created_at'],
+            'joinDate' => $user['created_at'] ?? null,
             'profilePokemonId' => (int)($user['profile_pokemon_id'] ?? 25)
         ],
         'stats' => [

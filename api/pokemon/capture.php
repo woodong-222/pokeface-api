@@ -4,28 +4,28 @@ require_once __DIR__ . '/../../config/auth_middleware.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
-    echo json_encode(['message' => 'Method not allowed']);
+    echo json_encode(['message' => '허용되지 않은 요청 방식입니다']);
     exit;
 }
 
 if (!isset($_FILES['image']) || $_FILES['image']['error'] !== UPLOAD_ERR_OK) {
     http_response_code(400);
-    echo json_encode(['message' => 'Image upload failed', 'upload_error' => $_FILES['image']['error'] ?? 'No file']);
+    echo json_encode(['message' => '이미지 업로드에 실패했습니다', 'upload_error' => $_FILES['image']['error'] ?? 'No file']);
     exit;
 }
 
 $uploadedFile = $_FILES['image'];
-$allowedTypes = ['image/jpeg', 'image/png', 'image/jpg'];
+$allowedTypes = ['image/jpeg', 'image/png', 'image/jpg', 'image/webp'];
 
 if (!in_array($uploadedFile['type'], $allowedTypes)) {
     http_response_code(400);
-    echo json_encode(['message' => 'Invalid image type. Only JPEG and PNG allowed']);
+    echo json_encode(['message' => '지원하지 않는 이미지 형식입니다. JPG, PNG, WEBP 형식만 사용가능합니다']);
     exit;
 }
 
-if ($uploadedFile['size'] > 5 * 1024 * 1024) {
+if ($uploadedFile['size'] > 20 * 1024 * 1024) {
     http_response_code(400);
-    echo json_encode(['message' => 'File too large. Maximum 5MB allowed']);
+    echo json_encode(['message' => '파일 크기가 너무 큽니다. 20MB 이하의 파일을 사용해주세요']);
     exit;
 }
 
@@ -65,17 +65,16 @@ while (file_exists($tempFilePath)) {
 
 if (!move_uploaded_file($uploadedFile['tmp_name'], $tempFilePath)) {
     http_response_code(500);
-    echo json_encode(['message' => 'Failed to save uploaded file']);
+    echo json_encode(['message' => '파일 저장에 실패했습니다']);
     exit;
 }
 
 try {
-    $pythonPath = 'python3';
-    
+    $pythonPath = '/opt/venv/bin/python';
     $scriptPath = __DIR__ . '/../../scripts/face_embedding.py';
     
     if (!file_exists($scriptPath)) {
-        throw new Exception("Python script not found: $scriptPath");
+        throw new Exception("얼굴 인식 스크립트를 찾을 수 없습니다");
     }
     
     $cmd = escapeshellcmd("$pythonPath $scriptPath " . escapeshellarg($tempFilePath));
@@ -106,7 +105,7 @@ try {
         error_log("Python script return value: " . $return_value);
         
         if (empty($output)) {
-            throw new Exception("Python script returned empty output. Errors: " . $errors);
+            throw new Exception("얼굴 인식 처리에 실패했습니다. 에러: " . $errors);
         }
         
         $lines = explode("\n", trim($output));
@@ -121,41 +120,43 @@ try {
         }
         
         if (!$jsonLine) {
-            throw new Exception("No valid JSON found in Python script output. Raw output: " . $output);
+            throw new Exception("얼굴 인식 결과를 처리할 수 없습니다");
         }
         
         $result = json_decode($jsonLine, true);
         
         if ($result === null && json_last_error() !== JSON_ERROR_NONE) {
-            throw new Exception("JSON parsing failed: " . json_last_error_msg() . ". Raw JSON: " . $jsonLine);
+            throw new Exception("얼굴 인식 결과 분석에 실패했습니다");
         }
         
         if (isset($result['error'])) {
-            throw new Exception($result['error']);
+            $pythonError = $result['error'];
+            if (strpos($pythonError, 'Face could not be detected') !== false) {
+                throw new Exception("얼굴을 감지할 수 없습니다. 명확한 얼굴이 포함된 이미지를 사용해주세요");
+            } elseif (strpos($pythonError, 'Multiple faces') !== false) {
+                throw new Exception("여러 명의 얼굴이 감지되었습니다. 한 명의 인물만 나온 사진을 사용해주세요");
+            } elseif (strpos($pythonError, 'non-english characters') !== false) {
+                throw new Exception("파일 경로에 한글이나 특수문자가 포함되어 있습니다. 영문 파일명을 사용해주세요");
+            } else {
+                throw new Exception("얼굴 인식 오류: " . $pythonError);
+            }
         }
         
         if (!isset($result['embedding'])) {
-            throw new Exception("No embedding found in Python script output");
+            throw new Exception("얼굴 데이터 추출에 실패했습니다");
         }
         
         $embedding = $result['embedding'];
         
     } else {
-        throw new Exception("Failed to execute Python script");
+        throw new Exception("얼굴 인식 프로그램 실행에 실패했습니다");
     }
     
-    $env = parse_ini_file(__DIR__ . '/../../.env');
-    $developerEmbedding = null;
-    
-    if (isset($env['DEVELOPER_FACE_EMBEDDING'])) {
-        $developerEmbedding = json_decode($env['DEVELOPER_FACE_EMBEDDING'], true);
-    }
-    
-    $stmt = $pdo->prepare('SELECT id, face_embedding, pokemon_id FROM captures WHERE user_id = ? AND face_embedding IS NOT NULL');
-    $stmt->execute([$currentUser['id']]);
+    $stmt = $pdo->prepare('SELECT id, face_embedding FROM faces');
+    $stmt->execute();
     $existingFaces = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
-    $matchedFace = null;
+    $matchedFaceId = null;
     $threshold = 0.75;
     
     foreach ($existingFaces as $face) {
@@ -163,49 +164,57 @@ try {
         if ($storedEmbedding && is_array($storedEmbedding)) {
             $similarity = calculateCosineSimilarity($embedding, $storedEmbedding);
             
-            error_log("Face similarity: " . $similarity . " for pokemon_id: " . $face['pokemon_id']);
+            error_log("Face similarity: " . $similarity . " for face_id: " . $face['id']);
             
             if ($similarity > $threshold) {
-                $matchedFace = $face;
+                $matchedFaceId = $face['id'];
                 break;
             }
         }
     }
     
-    if ($matchedFace) {
-        $pokemonId = $matchedFace['pokemon_id'];
+    if ($matchedFaceId) {
+        $stmt = $pdo->prepare('SELECT pokemon_id FROM captures_history WHERE user_id = ? AND face_id = ? LIMIT 1');
+        $stmt->execute([$currentUser['id'], $matchedFaceId]);
+        $existingCapture = $stmt->fetch(PDO::FETCH_ASSOC);
         
-        if (file_exists($tempFilePath)) {
-            unlink($tempFilePath);
+        if ($existingCapture) {
+            if (file_exists($tempFilePath)) {
+                unlink($tempFilePath);
+            }
+            
+            $pokemonId = $existingCapture['pokemon_id'];
+            $stmt = $pdo->prepare('SELECT evolution_stage FROM user_pokemon WHERE user_id = ? AND pokemon_id = ?');
+            $stmt->execute([$currentUser['id'], $pokemonId]);
+            $currentStage = $stmt->fetchColumn() ?: 1;
+            
+            echo json_encode([
+                'message' => 'Pokemon captured successfully',
+                'result' => [
+                    'pokemonId' => $pokemonId,
+                    'pokemonName' => getPokemonName($pokemonId),
+                    'pokemonImage' => "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/{$pokemonId}.png",
+                    'isNew' => false,
+                    'evolutionStage' => $currentStage,
+                    'evolved' => false,
+                    'alreadyCaptured' => true
+                ]
+            ]);
+            exit;
+        } else {
+            $pokemonId = getExistingPokemonForFace($matchedFaceId);
+            
+            $stmt = $pdo->prepare('INSERT INTO captures_history (user_id, pokemon_id, image_path, original_filename, face_id, captured_at) VALUES (?, ?, ?, ?, ?, NOW())');
+            $stmt->execute([$currentUser['id'], $pokemonId, $safeFileName, $originalFileName, $matchedFaceId]);
+            
+            handlePokemonEvolution($currentUser['id'], $pokemonId);
         }
-        
-        error_log("Matched existing face for pokemon_id: " . $pokemonId . " - same person, no evolution");
-        
-        $stmt = $pdo->prepare('SELECT evolution_stage FROM user_pokemon WHERE user_id = ? AND pokemon_id = ?');
-        $stmt->execute([$currentUser['id'], $pokemonId]);
-        $currentStage = $stmt->fetchColumn();
-        
-        if (!$currentStage) {
-            $minStage = getMinEvolutionStage($pokemonId);
-            $stmt = $pdo->prepare('INSERT INTO user_pokemon (user_id, pokemon_id, evolution_stage, captured_at) VALUES (?, ?, ?, NOW())');
-            $stmt->execute([$currentUser['id'], $pokemonId, $minStage]);
-            $currentStage = $minStage;
-        }
-        
-        echo json_encode([
-            'message' => 'Pokemon captured successfully',
-            'result' => [
-                'pokemonId' => $pokemonId,
-                'pokemonName' => getPokemonName($pokemonId),
-                'pokemonImage' => "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/{$pokemonId}.png",
-                'isNew' => false,
-                'evolutionStage' => $currentStage,
-                'evolved' => false
-            ]
-        ]);
-        
     } else {
-        error_log("No matching face found, assigning new pokemon");
+        $stmt = $pdo->prepare('INSERT INTO faces (face_embedding, first_captured_at) VALUES (?, NOW())');
+        $stmt->execute([json_encode($embedding)]);
+        $newFaceId = $pdo->lastInsertId();
+        
+        error_log("Created new face_id: " . $newFaceId);
         
         $availableStarter = getAvailableStarterPokemon($currentUser['id']);
         
@@ -214,62 +223,16 @@ try {
                 unlink($tempFilePath);
             }
             http_response_code(400);
-            echo json_encode(['message' => 'No available starter Pokemon']);
+            echo json_encode(['message' => '더 이상 배정할 수 있는 포켓몬이 없습니다. 관리자에게 문의해주세요']);
             exit;
         }
         
         $pokemonId = $availableStarter['id'];
         
-        error_log("Assigned new pokemon_id: " . $pokemonId);
+        $stmt = $pdo->prepare('INSERT INTO captures_history (user_id, pokemon_id, image_path, original_filename, face_id, captured_at) VALUES (?, ?, ?, ?, ?, NOW())');
+        $stmt->execute([$currentUser['id'], $pokemonId, $safeFileName, $originalFileName, $newFaceId]);
         
-        $stmt = $pdo->prepare('INSERT INTO captures (user_id, pokemon_id, image_path, original_filename, face_embedding, captured_at) VALUES (?, ?, ?, ?, ?, NOW())');
-        $stmt->execute([$currentUser['id'], $pokemonId, $safeFileName, $originalFileName, json_encode($embedding)]);
-        
-        $stmt = $pdo->prepare('SELECT evolution_stage FROM user_pokemon WHERE user_id = ? AND pokemon_id = ?');
-        $stmt->execute([$currentUser['id'], $pokemonId]);
-        $currentStage = $stmt->fetchColumn();
-        
-        $isNew = false;
-        $evolved = false;
-        $newStage = 1;
-        
-        if (!$currentStage) {
-            $minStage = getMinEvolutionStage($pokemonId);
-            $stmt = $pdo->prepare('INSERT INTO user_pokemon (user_id, pokemon_id, evolution_stage, captured_at) VALUES (?, ?, ?, NOW())');
-            $stmt->execute([$currentUser['id'], $pokemonId, $minStage]);
-            $newStage = $minStage;
-            $isNew = true;
-            $evolved = false;
-            
-            error_log("First capture of pokemon_id: {$pokemonId} at stage: {$minStage}");
-        } else {
-            $maxStage = getMaxEvolutionStage($pokemonId);
-            $newStage = min($currentStage + 1, $maxStage);
-            $evolved = $newStage > $currentStage;
-            
-            if ($evolved) {
-                $stmt = $pdo->prepare('UPDATE user_pokemon SET evolution_stage = ?, updated_at = NOW() WHERE user_id = ? AND pokemon_id = ?');
-                $stmt->execute([$newStage, $currentUser['id'], $pokemonId]);
-                
-                error_log("Pokemon evolved from stage {$currentStage} to {$newStage}");
-            } else {
-                error_log("Pokemon already at max evolution stage: {$currentStage}");
-            }
-        }
-        
-        updateUserStats($currentUser['id'], $evolved);
-        
-        echo json_encode([
-            'message' => 'Pokemon captured successfully',
-            'result' => [
-                'pokemonId' => $pokemonId,
-                'pokemonName' => getPokemonName($pokemonId),
-                'pokemonImage' => "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/{$pokemonId}.png",
-                'isNew' => $isNew,
-                'evolutionStage' => $newStage,
-                'evolved' => $evolved
-            ]
-        ]);
+        handlePokemonEvolution($currentUser['id'], $pokemonId, true);
     }
     
 } catch (Exception $e) {
@@ -279,8 +242,67 @@ try {
     
     http_response_code(500);
     echo json_encode([
-        'message' => 'Face detection failed',
+        'message' => '얼굴 인식에 실패했습니다',
         'error' => $e->getMessage()
+    ]);
+}
+
+function getExistingPokemonForFace($faceId) {
+    global $pdo;
+    
+    $stmt = $pdo->prepare('SELECT pokemon_id FROM captures_history WHERE face_id = ? ORDER BY captured_at ASC LIMIT 1');
+    $stmt->execute([$faceId]);
+    return $stmt->fetchColumn();
+}
+
+function handlePokemonEvolution($userId, $pokemonId, $isNewPokemon = false) {
+    global $pdo;
+    
+    $stmt = $pdo->prepare('SELECT evolution_stage FROM user_pokemon WHERE user_id = ? AND pokemon_id = ?');
+    $stmt->execute([$userId, $pokemonId]);
+    $currentStage = $stmt->fetchColumn();
+    
+    $isNew = false;
+    $evolved = false;
+    $newStage = 1;
+    
+    if (!$currentStage) {
+        $minStage = getMinEvolutionStage($pokemonId);
+        $stmt = $pdo->prepare('INSERT INTO user_pokemon (user_id, pokemon_id, evolution_stage, captured_at) VALUES (?, ?, ?, NOW())');
+        $stmt->execute([$userId, $pokemonId, $minStage]);
+        $newStage = $minStage;
+        $isNew = true;
+        $evolved = false;
+        
+        error_log("First capture of pokemon_id: {$pokemonId} at stage: {$minStage}");
+    } else {
+        $maxStage = getMaxEvolutionStage($pokemonId);
+        $newStage = min($currentStage + 1, $maxStage);
+        $evolved = $newStage > $currentStage;
+        
+        if ($evolved) {
+            $stmt = $pdo->prepare('UPDATE user_pokemon SET evolution_stage = ?, updated_at = NOW() WHERE user_id = ? AND pokemon_id = ?');
+            $stmt->execute([$newStage, $userId, $pokemonId]);
+            
+            error_log("Pokemon evolved from stage {$currentStage} to {$newStage}");
+        } else {
+            error_log("Pokemon already at max evolution stage: {$currentStage}");
+        }
+    }
+    
+    updateUserStats($userId, $evolved);
+    
+    echo json_encode([
+        'message' => 'Pokemon captured successfully',
+        'result' => [
+            'pokemonId' => $pokemonId,
+            'pokemonName' => getPokemonName($pokemonId),
+            'pokemonImage' => "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/{$pokemonId}.png",
+            'isNew' => $isNew,
+            'evolutionStage' => $newStage,
+            'evolved' => $evolved,
+            'alreadyCaptured' => false
+        ]
     ]);
 }
 
@@ -288,15 +310,15 @@ function updateUserStats($userId, $evolutionOccurred = false) {
     global $pdo;
     
     try {
-        $totalStmt = $pdo->prepare('SELECT COUNT(*) FROM captures WHERE user_id = ?');
+        $totalStmt = $pdo->prepare('SELECT COUNT(*) FROM captures_history WHERE user_id = ?');
         $totalStmt->execute([$userId]);
         $totalCaptures = $totalStmt->fetchColumn();
         
-        $uniqueStmt = $pdo->prepare('SELECT COUNT(DISTINCT pokemon_id) FROM captures WHERE user_id = ?');
+        $uniqueStmt = $pdo->prepare('SELECT COUNT(DISTINCT pokemon_id) FROM captures_history WHERE user_id = ?');
         $uniqueStmt->execute([$userId]);
         $uniquePokemon = $uniqueStmt->fetchColumn();
         
-        $lastStmt = $pdo->prepare('SELECT MAX(captured_at) FROM captures WHERE user_id = ?');
+        $lastStmt = $pdo->prepare('SELECT MAX(captured_at) FROM captures_history WHERE user_id = ?');
         $lastStmt->execute([$userId]);
         $lastCaptureDate = $lastStmt->fetchColumn();
         

@@ -1,29 +1,26 @@
-
 <?php
+date_default_timezone_set('Asia/Seoul');
+
 header('Content-Type: application/json; charset=utf-8');
 
-// 허용할 도메인 목록
 $allowedOrigins = [
     'https://pokeface.kro.kr',
-    'http://localhost:3000',
-    'http://localhost:3001'
+    'http://localhost:3000'
 ];
 
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
 
 if (in_array($origin, $allowedOrigins)) {
     header("Access-Control-Allow-Origin: $origin");
-} else {
-    header('Access-Control-Allow-Origin: https://pokeface.kro.kr');
 }
 
-header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
-header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, PATCH, OPTIONS');
-header('Access-Control-Allow-Credentials: true');
-header('Access-Control-Max-Age: 3600');
+header('Access-Control-Allow-Headers: Content-Type, Authorization');
+header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    http_response_code(200);
-    exit();
+    exit(0);
 }
+
+require_once __DIR__ . '/env_config.php';
+require_once __DIR__ . '/../db/db.php';
 ?>

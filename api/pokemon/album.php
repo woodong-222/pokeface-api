@@ -18,7 +18,7 @@ try {
 
     $userId = $currentUser['id'];
 
-    $countStmt = $pdo->prepare('SELECT COUNT(*) FROM captures WHERE user_id = :user_id');
+    $countStmt = $pdo->prepare('SELECT COUNT(*) FROM captures_history WHERE user_id = :user_id');
     $countStmt->execute(['user_id' => $userId]);
     $totalCount = $countStmt->fetchColumn();
 
@@ -29,7 +29,7 @@ try {
             image_path,
             original_filename,
             captured_at
-        FROM captures
+        FROM captures_history
         WHERE user_id = :user_id
         ORDER BY captured_at ' . strtoupper($orderBy) . '
         LIMIT ' . (int)$limit . ' OFFSET ' . (int)$offset

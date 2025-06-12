@@ -21,7 +21,7 @@ try {
     $decoded = JWT::decode($jwt, new Key(JWT_SECRET, 'HS256'));
     $userId = $decoded->sub;
 
-    $stmt = $pdo->prepare('SELECT id, user_name, user_id FROM users WHERE id = ?');
+    $stmt = $pdo->prepare('SELECT id, user_name, user_id, created_at, profile_pokemon_id FROM users WHERE id = ?');
     $stmt->execute([$userId]);
     $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -38,3 +38,4 @@ try {
     echo json_encode(['message' => 'Invalid or expired token', 'error' => $e->getMessage()]);
     exit;
 }
+?>

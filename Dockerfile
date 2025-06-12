@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
     python3-dev \
+    python3-venv \
     cmake \
     build-essential \
     libopenblas-dev \
@@ -35,9 +36,12 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 # Set working directory
 WORKDIR /var/www/html
 
-# Copy requirements.txt and install Python packages
+# Create Python virtual environment
+RUN python3 -m venv /opt/venv
+
+# Copy requirements.txt and install Python packages in virtual environment
 COPY requirements.txt .
-RUN pip3 install --no-cache-dir -r requirements.txt
+RUN /opt/venv/bin/pip install --no-cache-dir -r requirements.txt
 
 # Copy PHP files
 COPY . .
@@ -59,5 +63,4 @@ COPY start.sh /start.sh
 RUN chmod +x /start.sh
 
 EXPOSE 80
-
 CMD ["/start.sh"]
